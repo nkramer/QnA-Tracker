@@ -91,13 +91,15 @@
         localStorage.removeItem("simple.error");
         // Go to the Azure AD authorization endpoint
         let queryParams = {
-            client_id: "8a0d6aea-046c-4f30-81a4-e5cc02bce2de", //"c10d02d2-1c49-4b09-9333-566d49ba58cf",
-            response_type: "id_token token",
+            //client_id: "8a0d6aea-046c-4f30-81a4-e5cc02bce2de", //"c10d02d2-1c49-4b09-9333-566d49ba58cf",
+            client_id: "cb38cf54-ac89-4a7a-9ea3-095d3d080037",
+            response_type: "id_token",
             response_mode: "form_post",
             resource: "https://graph.microsoft.com",
             redirect_uri: window.location.origin + "/authdone",
             nonce: "23",
             state: state,
+            scope: "openid",
             // The context object is populated by Teams; the loginHint attribute
             // is used as hinting information
             login_hint: context.loginHint,

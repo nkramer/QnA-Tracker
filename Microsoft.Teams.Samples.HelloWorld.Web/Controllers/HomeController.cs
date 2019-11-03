@@ -77,8 +77,11 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 req_txt = reader.ReadToEnd();
             }
             string token = ParseOauthResponse(req_txt);
-            GraphServiceClient graph = GetAuthenticatedClient(token);
-            var u = await (graph.Me.Request().GetAsync());
+            Response.Cookies.Add(new System.Web.HttpCookie("GraphToken", token));
+
+
+            //GraphServiceClient graph = GetAuthenticatedClient(token);
+            //var u = await (graph.Me.Request().GetAsync());
 
             return View("AuthDone");
         }
@@ -114,7 +117,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             //var bearer = JsonConvert.DeserializeObject<BearerResponse>(resp);
             //string token = bearer.access_token;
 
-            Response.Cookies.Add(new System.Web.HttpCookie("GraphToken", access_token));
             return access_token;
 
             //Response.Cookies.Append("GraphToken", token);
@@ -138,6 +140,8 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             )
         {
             bool usingRSC = (useRSC != false);
+            var cookie = Request.Cookies["GraphToken"];
+            bool showLogin = (cookie == null);
 
             string token;
             if (usingRSC)
@@ -146,13 +150,12 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             }
             else
             {
-                var cookie = Request.Cookies["GraphToken"];
                 token = cookie == null ? null : cookie.Value;
                 //token = Request.Cookies["GraphToken"].Value;
             }
 
             QandAModel model = GetModel(tenantId, teamId, channelId, "");
-            QandAModelWrapper wrapper = new QandAModelWrapper() { model = model, useRSC = usingRSC, showLogin = (token == null) };
+            QandAModelWrapper wrapper = new QandAModelWrapper() { model = model, useRSC = usingRSC, showLogin = showLogin };
 
             try
             {
@@ -172,8 +175,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 wrapper.showLogin = true;
                 return View("First", wrapper);
             }
-        }
- 
+        } 
 
         [Route("Home/MarkAsAnswered")]
         public ActionResult MarkAsAnswered(
@@ -207,9 +209,34 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             return Redirect(url);
         }
 
+        private bool IsValidUser(QandAModel qAndA) {
+            var cookie = Request.Cookies["GraphToken"];
+            if (cookie == null)
+                return false;
+
+            var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(cookie.Value);
+
+            string oid = null;
+            string tid = null;
+            foreach (var claim in jwt.Claims)
+            {
+                if (claim.Type == "oid")
+                    oid = claim.Value;
+                if (claim.Type == "tid")
+                    tid = claim.Value;
+            }
+
+            if (tid == null || tid != qAndA.tenantId)
+                return false;
+
+            return true;
+        }
 
         public async Task RefreshQandA(QandAModel qAndA, GraphServiceClient graph)
         {
+            if (!IsValidUser(qAndA))
+                throw new Exception("Unauthorized user!");
+
             var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
                 .Messages.Request().Top(30).GetAsync();
             //var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
