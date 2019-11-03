@@ -143,6 +143,12 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             var cookie = Request.Cookies["GraphToken"];
             bool showLogin = (cookie == null);
 
+            QandAModel model = GetModel(tenantId, teamId, channelId, "");
+            QandAModelWrapper wrapper = new QandAModelWrapper() { model = model, useRSC = usingRSC, showLogin = showLogin };
+
+            if (!IsValidUser(model))
+                throw new Exception("Unauthorized user!");
+
             string token;
             if (usingRSC)
             {
@@ -153,9 +159,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 token = cookie == null ? null : cookie.Value;
                 //token = Request.Cookies["GraphToken"].Value;
             }
-
-            QandAModel model = GetModel(tenantId, teamId, channelId, "");
-            QandAModelWrapper wrapper = new QandAModelWrapper() { model = model, useRSC = usingRSC, showLogin = showLogin };
 
             try
             {
