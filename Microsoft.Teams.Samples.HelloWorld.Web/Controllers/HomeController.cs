@@ -162,6 +162,20 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 
                 GraphServiceClient graph = GetAuthenticatedClient(messagingToken);
 
+                //bool userIsMember = false;
+                //var checks = graph.Groups[teamId].CheckMemberObjects(new string[] { UserFromToken() }).Request().PostAsync();
+                //foreach (var c in await checks)
+                //{
+                //    if (c == UserFromToken())
+                //        userIsMember = true;
+                //}
+
+                //if (!userIsMember)
+                //{
+                //    wrapper.model = null;
+                //    wrapper.showLogin = true;
+                //}
+
                 if (skipRefresh != true && !wrapper.showLogin)
                 {
                     await RefreshQandA(model, graph);
@@ -210,7 +224,29 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             return Redirect(url);
         }
 
-        private bool IsValidUser(string tenantId, string teamId) {
+        private string UserFromToken()
+        {
+            var cookie = Request.Cookies["GraphToken"];
+            if (cookie == null)
+                return null;
+
+            var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(cookie.Value);
+
+            string oid = null;
+            string tid = null;
+            foreach (var claim in jwt.Claims)
+            {
+                if (claim.Type == "oid")
+                    oid = claim.Value;
+                if (claim.Type == "tid")
+                    tid = claim.Value;
+            }
+
+            return oid;
+        }
+
+        private bool IsValidUser(string tenantId, string teamId)
+        {
             var cookie = Request.Cookies["GraphToken"];
             if (cookie == null)
                 return false;
