@@ -140,29 +140,27 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             )
         {
             bool usingRSC = (useRSC != false);
-            var cookie = Request.Cookies["GraphToken"];
-            bool showLogin = (cookie == null);
+            var userToken = Request.Cookies["GraphToken"] == null ? null : Request.Cookies["GraphToken"].Value;
 
-            QandAModel model = GetModel(tenantId, teamId, channelId, "");
-            QandAModelWrapper wrapper = new QandAModelWrapper() { model = model, useRSC = usingRSC, showLogin = showLogin };
-
-            if (!IsValidUser(model))
-                throw new Exception("Unauthorized user!");
-
-            string token;
+            string messagingToken;
             if (usingRSC)
-            {
-                token = await GetToken(tenantId);
-            }
+                messagingToken = await GetToken(tenantId);
             else
-            {
-                token = cookie == null ? null : cookie.Value;
-                //token = Request.Cookies["GraphToken"].Value;
-            }
+                messagingToken = userToken;
+
+            QandAModelWrapper wrapper = new QandAModelWrapper() { useRSC = usingRSC, showLogin = true };
+
+            //if (!IsValidUser(model))
+            //    throw new Exception("Unauthorized user!");
 
             try
             {
-                GraphServiceClient graph = GetAuthenticatedClient(token);
+                wrapper.model = GetModel(tenantId, teamId, channelId, "");
+                QandAModel model = GetModel(tenantId, teamId, channelId, "");
+                wrapper.showLogin = (model == null);
+                //bool showLogin = (model == null); //(userToken == null);
+
+                GraphServiceClient graph = GetAuthenticatedClient(messagingToken);
 
                 if (skipRefresh != true && !wrapper.showLogin)
                 {
@@ -212,7 +210,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             return Redirect(url);
         }
 
-        private bool IsValidUser(QandAModel qAndA) {
+        private bool IsValidUser(string tenantId, string teamId) {
             var cookie = Request.Cookies["GraphToken"];
             if (cookie == null)
                 return false;
@@ -229,15 +227,19 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                     tid = claim.Value;
             }
 
-            if (tid == null || tid != qAndA.tenantId)
+            if (tid == null || tid != tenantId)
                 return false;
+
+            // TODO: check user
+            // TODO: check token validity
 
             return true;
         }
 
         public async Task RefreshQandA(QandAModel qAndA, GraphServiceClient graph)
         {
-            if (!IsValidUser(qAndA))
+            // Redundant auth check
+            if (!IsValidUser(qAndA.tenantId, qAndA.teamId))
                 throw new Exception("Unauthorized user!");
 
             var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
@@ -292,6 +294,10 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 
         private QandAModel GetModel(string tenantId, string teamId, string channelId, string messageId)
         {
+            if (!IsValidUser(tenantId, teamId))
+                throw new Exception("Unauthorized user!");
+
+
             string key = QandAModel.Encode(tenantId, teamId, channelId, messageId);
             QandAModel model;
             if (QandAModel.qAndALookup.ContainsKey(key))

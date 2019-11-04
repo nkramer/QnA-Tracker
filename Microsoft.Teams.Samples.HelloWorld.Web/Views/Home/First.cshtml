@@ -112,7 +112,6 @@
 @{
     // HACK: Should just be Model, but even accessing that property throws an exception
     var model = Model.model; //(BotAuthenticationMSGraph.QandAModel)ViewBag.MyModel;
-    bool useRSC = Model.useRSC;
     if (Model.showLogin)
     {
         <button onclick="showLogin()">Authenticate me</button>
