@@ -148,6 +148,9 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             return View("Index");
         }
 
+        private static Dictionary<string, string> channelToSubscription
+            = new Dictionary<string, string>();
+
         [Route("first")]
         public async Task<ActionResult> First(
             [FromUri(Name = "tenantId")] string tenantId,
@@ -170,6 +173,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 token = cookie == null ? null : cookie.Value;
                 //token = Request.Cookies["GraphToken"].Value;
             }
+            //token = null;
 
             QandAModel model = GetModel(tenantId, teamId, channelId, "");
             QandAModelWrapper wrapper = new QandAModelWrapper() { model = model, useRSC = usingRSC, showLogin = (token == null) };
@@ -181,6 +185,35 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 if (skipRefresh != true && !wrapper.showLogin)
                 {
                     await RefreshQandA(model, graph);
+
+                    var subscription = new Subscription
+                    {
+                        Resource = $"teams/{model.teamId}/channels/{model.channelId}/messages",
+                        ChangeType = "created,updated",
+                        NotificationUrl = ConfigurationManager.AppSettings["NotificationUrl"],
+                        ClientState = Guid.NewGuid().ToString(),
+                        ExpirationDateTime = DateTime.UtcNow + new TimeSpan(days: 0, hours: 0, minutes: 10, seconds: 0),
+                        IncludeProperties = true
+                    };
+
+                    if (channelToSubscription.ContainsKey(channelId))
+                    {
+                        // refresh subscription
+                        var subId = channelToSubscription[channelId];
+                        var newSubscription = await graph.Subscriptions[subId].Request().UpdateAsync(subscription);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            var newSubscription = await graph.Subscriptions.Request().AddAsync(subscription);
+                            channelToSubscription[channelId] = newSubscription.Id;
+                        }
+                        catch (Exception e) when (e.Message.Contains("has reached its limit of 1 TEAMS"))
+                        {
+                            // ignore, we're still being notified
+                        }
+                    }
                 }
                 ViewBag.MyModel = model;
                 return View("First", wrapper);
