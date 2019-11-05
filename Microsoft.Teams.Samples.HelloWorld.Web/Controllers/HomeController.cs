@@ -10,6 +10,9 @@ using System.Web.Mvc;
 using FromUriAttribute = System.Web.Http.FromUriAttribute;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Net.Http;
+using System.Web;
+using System.Net;
 
 namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 {
@@ -59,6 +62,16 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
         public ActionResult Index()
         {
             return View();
+        }
+
+        [Route("subscription")]
+        [HttpPost]
+        public ActionResult AckSubscription()
+        {
+            var encodedString = this.Request.QueryString["validationToken"];
+            var decodedString = HttpUtility.UrlDecode(encodedString);
+            var res = new ContentResult() { Content = decodedString, ContentType = "text/plain", ContentEncoding = System.Text.Encoding.UTF8 };
+            return res;
         }
 
         [Route("Auth")]
@@ -161,7 +174,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 //bool showLogin = (model == null); //(userToken == null);
 
                 GraphServiceClient graph = GetAuthenticatedClient(messagingToken);
-
+                var checks = await graph.Groups[teamId].Members.Request().GetAsync();
                 //bool userIsMember = false;
                 //var checks = graph.Groups[teamId].CheckMemberObjects(new string[] { UserFromToken() }).Request().PostAsync();
                 //foreach (var c in await checks)
@@ -332,7 +345,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
         {
             if (!IsValidUser(tenantId, teamId))
                 throw new Exception("Unauthorized user!");
-
 
             string key = QandAModel.Encode(tenantId, teamId, channelId, messageId);
             QandAModel model;
