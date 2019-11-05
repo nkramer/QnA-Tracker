@@ -10,6 +10,7 @@ using System.Web.Mvc;
 using FromUriAttribute = System.Web.Http.FromUriAttribute;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Web;
 
 namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 {
@@ -59,6 +60,25 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
         public ActionResult Index()
         {
             return View();
+        }
+
+        [Route("subscription")]
+        [HttpPost]
+        public ActionResult Subscription()
+        {
+            var encodedString = this.Request.QueryString["validationToken"];
+            if (encodedString != null)
+            {
+                // Ack the webhook subscription
+                var decodedString = HttpUtility.UrlDecode(encodedString);
+                var res = new ContentResult() { Content = decodedString, ContentType = "text/plain", ContentEncoding = System.Text.Encoding.UTF8 };
+                return res;
+            } else
+            {
+                // signal clients
+                Broadcaster.Broadcast();
+                return new ContentResult() { Content = "", ContentType = "text/plain", ContentEncoding = System.Text.Encoding.UTF8 };
+            }
         }
 
         [Route("Auth")]
