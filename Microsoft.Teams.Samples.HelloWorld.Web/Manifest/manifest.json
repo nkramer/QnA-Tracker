@@ -37,7 +37,7 @@
   "accentColor": "#60A18E",
   "configurableTabs": [
     {
-      "configurationUrl": "https://fee3840b.ngrok.io/configure",
+      "configurationUrl": "https://qna.ngrok.io/configure",
       "canUpdateConfiguration": false,
       "scopes": [
         "team"
@@ -48,7 +48,7 @@
     {
       "entityId": "com.contoso.helloworld.hellotab",
       "name": "Hello Tab",
-      "contentUrl": "https://fee3840b.ngrok.io/hello",
+      "contentUrl": "https://qna.ngrok.io/hello",
       "scopes": [
         "personal"
       ]
