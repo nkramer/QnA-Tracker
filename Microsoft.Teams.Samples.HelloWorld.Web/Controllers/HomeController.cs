@@ -185,35 +185,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 if (skipRefresh != true && !wrapper.showLogin)
                 {
                     await RefreshQandA(model, graph);
-
-                    var subscription = new Subscription
-                    {
-                        Resource = $"teams/{model.teamId}/channels/{model.channelId}/messages",
-                        ChangeType = "created,updated",
-                        NotificationUrl = ConfigurationManager.AppSettings["NotificationUrl"],
-                        ClientState = Guid.NewGuid().ToString(),
-                        ExpirationDateTime = DateTime.UtcNow + new TimeSpan(days: 0, hours: 0, minutes: 10, seconds: 0),
-                        IncludeProperties = true
-                    };
-
-                    if (channelToSubscription.ContainsKey(channelId))
-                    {
-                        // refresh subscription
-                        var subId = channelToSubscription[channelId];
-                        var newSubscription = await graph.Subscriptions[subId].Request().UpdateAsync(subscription);
-                    }
-                    else
-                    {
-                        try
-                        {
-                            var newSubscription = await graph.Subscriptions.Request().AddAsync(subscription);
-                            channelToSubscription[channelId] = newSubscription.Id;
-                        }
-                        catch (Exception e) when (e.Message.Contains("has reached its limit of 1 TEAMS"))
-                        {
-                            // ignore, we're still being notified
-                        }
-                    }
+                    await CreateSubscription(channelId, model, graph);
                 }
                 ViewBag.MyModel = model;
                 return View("First", wrapper);
@@ -226,7 +198,45 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 return View("First", wrapper);
             }
         }
- 
+
+        private static async Task CreateSubscription(string channelId, QandAModel model, GraphServiceClient graph)
+        {
+            var subscription = new Subscription
+            {
+                Resource = $"teams/{model.teamId}/channels/{model.channelId}/messages",
+                ChangeType = "created,updated",
+                NotificationUrl = ConfigurationManager.AppSettings["NotificationUrl"],
+                ClientState = Guid.NewGuid().ToString(),
+                ExpirationDateTime = DateTime.UtcNow + new TimeSpan(days: 0, hours: 0, minutes: 10, seconds: 0),
+                IncludeProperties = true
+            };
+
+            try
+            {
+                if (channelToSubscription.ContainsKey(channelId))
+                {
+                    // refresh subscription
+                    var subId = channelToSubscription[channelId];
+                    var newSubscription = await graph.Subscriptions[subId].Request().UpdateAsync(subscription);
+                }
+                else
+                {
+                    try
+                    {
+                        var newSubscription = await graph.Subscriptions.Request().AddAsync(subscription);
+                        channelToSubscription[channelId] = newSubscription.Id;
+                    }
+                    catch (Exception e) when (e.Message.Contains("has reached its limit of 1 TEAMS"))
+                    {
+                        // ignore, we're still being notified
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Bail on subscriptions without killing the whole demo
+            }
+        }
 
         [Route("Home/MarkAsAnswered")]
         public ActionResult MarkAsAnswered(
