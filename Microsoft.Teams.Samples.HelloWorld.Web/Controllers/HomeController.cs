@@ -185,7 +185,10 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 if (skipRefresh != true && !wrapper.showLogin)
                 {
                     await RefreshQandA(model, graph);
-                    await CreateSubscription(channelId, model, graph);
+                    if (usingRSC)
+                    {
+                        await CreateSubscription(channelId, model, graph);
+                    }
                 }
                 ViewBag.MyModel = model;
                 return View("First", wrapper);
@@ -273,30 +276,45 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 
         public async Task RefreshQandA(QandAModel qAndA, GraphServiceClient graph)
         {
-            var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
-                .Messages.Request().Top(30).GetAsync();
-            //var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
-            //    .Messages[qAndA.messageId].Replies.Request().Top(50).GetAsync();
-
-            // merge w/ existing questions 
-            var questions =
-                from m in msgs
-                where IsQuestion(m)
-                select new Question()
-                {
-                    MessageId = m.Id,
-                    Text = StripHTML(m.Body.Content),
-                    Votes = m.Reactions.Count()
-                };
-            qAndA.Questions = questions.OrderByDescending(m => m.Votes).ToList();
-
-            foreach (var q in questions)
+            var handle = graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
+                .Messages.Request().Top(30);
+            try
             {
-                if (!qAndA.IsQuestionAnswered.ContainsKey(q.MessageId))
-                    qAndA.IsQuestionAnswered[q.MessageId] = false;
-            }
+                var msgs = await handle.GetAsync();
+                //var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
+                //    .Messages.Request().Top(30).GetAsync();
+                ////var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
+                //    .Messages[qAndA.messageId].Replies.Request().Top(50).GetAsync();
 
-            //await UpdateCard(qAndA);
+                // merge w/ existing questions 
+                var questions =
+                    from m in msgs
+                    where IsQuestion(m)
+                    select new Question()
+                    {
+                        MessageId = m.Id,
+                        Text = StripHTML(m.Body.Content),
+                        Votes = m.Reactions.Count()
+                    };
+                qAndA.Questions = questions.OrderByDescending(m => m.Votes).ToList();
+
+                foreach (var q in questions)
+                {
+                    if (!qAndA.IsQuestionAnswered.ContainsKey(q.MessageId))
+                        qAndA.IsQuestionAnswered[q.MessageId] = false;
+                }
+
+                //await UpdateCard(qAndA);
+            } catch (Exception e)
+            {
+                string m = String.Format("{0}\n {1}\n {2}\n {3}\n --- trace {4}", handle.GetHttpRequestMessage().GetRequestContext().ClientRequestId,
+                    handle.GetHttpRequestMessage().Method,
+                    handle.GetHttpRequestMessage().RequestUri,
+                    handle.GetHttpRequestMessage().Content,
+                    //handle.GetHttpRequestMessage().Headers.Authorization.Parameter,
+                    e.StackTrace);
+                throw new Exception(m);
+            }
         }
 
         public static string StripHTML(string input)
