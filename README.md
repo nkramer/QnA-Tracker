@@ -15,7 +15,12 @@ extensions:
 
 # Demo script
 
+git clone https://github.com/nkramer/graphbot.git -b signalr
+(note branch)
+
 Q&A Tracker is a tab that uses resource-specific consent to read messages and get notified of new messages (Webhooks). It also installs a bot but you should ignore that for now. It should not be used in the production tenant until some additional security work is done in the app.
+
+For reasons I haven't figured out Webhooks aren't working in the Azure-deployed version, so you'll need to run from ngrok.
 
 Q&A Tracker comes in several flavors:
 - (Azure) -- this is the main one you should use. 
@@ -47,6 +52,9 @@ Demo setup:
 - Add some questions. Q&A Tracker will only look at root messages (not replies), it only looks at the most recent 30 messages (including control messages), and it only looks at messages that contain a question mark.
 - Like some of those questions -- questions will be ranked by reaction count.
 - Create a second window, logged into the same account or a different account that's a member of the team you just created
+- For the best demo, install your app to the LOB catalog rather than sideload on stage.
+- If you have to sideload, you can do it from the Team | Manage Team | Apps | Upload a custom app screen. 
+- For maximum sanity, uninstall your app before you install a new version.
 
 Demo steps:
 - Click + Pin a tab button. Pick "Q&A Tracker (Azure)". Search in tenant app catalog (Built for TEST_TEST_IP_TEST) if necessary.
