@@ -207,7 +207,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             var subscription = new Subscription
             {
                 Resource = $"teams/{model.teamId}/channels/{model.channelId}/messages",
-                ChangeType = "created,updated",
+                ChangeType = "created,updated,deleted",
                 NotificationUrl = ConfigurationManager.AppSettings["NotificationUrl"],
                 ClientState = Guid.NewGuid().ToString(),
                 ExpirationDateTime = DateTime.UtcNow + new TimeSpan(days: 0, hours: 0, minutes: 10, seconds: 0),
