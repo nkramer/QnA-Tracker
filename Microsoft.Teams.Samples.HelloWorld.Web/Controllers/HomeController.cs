@@ -10,7 +10,6 @@ using System.Web.Mvc;
 using FromUriAttribute = System.Web.Http.FromUriAttribute;
 using System.Text.RegularExpressions;
 using System.IO;
-using System.Net.Http;
 using System.Web;
 using System.Net;
 
@@ -174,10 +173,12 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             else
             {
                 var cookie = Request.Cookies["GraphToken"];
-                token = cookie == null ? null : cookie.Value;
+                messagingToken = cookie == null ? null : cookie.Value;
                 //token = Request.Cookies["GraphToken"].Value;
             }
             //token = null;
+
+            QandAModelWrapper wrapper = new QandAModelWrapper() { useRSC = usingRSC, showLogin = true };
 
             //if (!IsValidUser(model))
             //    throw new Exception("Unauthorized user!");
@@ -380,7 +381,10 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 //await UpdateCard(qAndA);
             } catch (Exception e)
             {
-                string m = String.Format("{0}\n {1}\n {2}\n {3}\n --- trace {4}", handle.GetHttpRequestMessage().GetRequestContext().ClientRequestId,
+
+                //string clientRequestId = (System.Net.Http.HttpRequestMessageExtensions.GetRequestContext(handle.GetHttpRequestMessage()).ClientRequestId;
+                string m = String.Format("{0}\n {1}\n {2}\n {3}\n --- trace {4}", 
+                    handle.GetHttpRequestMessage().GetRequestContext().ClientRequestId,
                     handle.GetHttpRequestMessage().Method,
                     handle.GetHttpRequestMessage().RequestUri,
                     handle.GetHttpRequestMessage().Content,
