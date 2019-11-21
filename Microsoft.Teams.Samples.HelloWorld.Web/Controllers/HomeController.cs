@@ -14,6 +14,7 @@ using System.Net.Http;
 using System.Web;
 using System.Net;
 
+
 namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 {
     public class TeamAndChannel
@@ -66,12 +67,21 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 
         [Route("subscription")]
         [HttpPost]
-        public ActionResult AckSubscription()
+        public ActionResult Subscription()
         {
             var encodedString = this.Request.QueryString["validationToken"];
-            var decodedString = HttpUtility.UrlDecode(encodedString);
-            var res = new ContentResult() { Content = decodedString, ContentType = "text/plain", ContentEncoding = System.Text.Encoding.UTF8 };
-            return res;
+            if (encodedString != null)
+            {
+                // Ack the webhook subscription
+                var decodedString = HttpUtility.UrlDecode(encodedString);
+                var res = new ContentResult() { Content = decodedString, ContentType = "text/plain", ContentEncoding = System.Text.Encoding.UTF8 };
+                return res;
+            } else
+            {
+                // signal clients
+                Broadcaster.Broadcast();
+                return new ContentResult() { Content = "", ContentType = "text/plain", ContentEncoding = System.Text.Encoding.UTF8 };
+            }
         }
 
         [Route("Auth")]
@@ -143,6 +153,9 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             return View("Index");
         }
 
+        private static Dictionary<string, string> channelToSubscription
+            = new Dictionary<string, string>();
+
         [Route("first")]
         public async Task<ActionResult> First(
             [FromUri(Name = "tenantId")] string tenantId,
@@ -159,9 +172,12 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             if (usingRSC)
                 messagingToken = await GetToken(tenantId);
             else
-                messagingToken = userToken;
-
-            QandAModelWrapper wrapper = new QandAModelWrapper() { useRSC = usingRSC, showLogin = true };
+            {
+                var cookie = Request.Cookies["GraphToken"];
+                token = cookie == null ? null : cookie.Value;
+                //token = Request.Cookies["GraphToken"].Value;
+            }
+            //token = null;
 
             //if (!IsValidUser(model))
             //    throw new Exception("Unauthorized user!");
@@ -192,6 +208,10 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 if (skipRefresh != true && !wrapper.showLogin)
                 {
                     await RefreshQandA(model, graph);
+                    if (usingRSC)
+                    {
+                        await CreateSubscription(channelId, model, graph);
+                    }
                 }
                 ViewBag.MyModel = model;
                 return View("First", wrapper);
@@ -203,7 +223,46 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 wrapper.showLogin = true;
                 return View("First", wrapper);
             }
-        } 
+        }
+
+        private static async Task CreateSubscription(string channelId, QandAModel model, GraphServiceClient graph)
+        {
+            var subscription = new Subscription
+            {
+                Resource = $"teams/{model.teamId}/channels/{model.channelId}/messages",
+                ChangeType = "created,updated,deleted",
+                NotificationUrl = ConfigurationManager.AppSettings["NotificationUrl"],
+                ClientState = Guid.NewGuid().ToString(),
+                ExpirationDateTime = DateTime.UtcNow + new TimeSpan(days: 0, hours: 0, minutes: 10, seconds: 0),
+                IncludeProperties = true
+            };
+
+            try
+            {
+                if (channelToSubscription.ContainsKey(channelId))
+                {
+                    // refresh subscription
+                    var subId = channelToSubscription[channelId];
+                    var newSubscription = await graph.Subscriptions[subId].Request().UpdateAsync(subscription);
+                }
+                else
+                {
+                    try
+                    {
+                        var newSubscription = await graph.Subscriptions.Request().AddAsync(subscription);
+                        channelToSubscription[channelId] = newSubscription.Id;
+                    }
+                    catch (Exception e) when (e.Message.Contains("has reached its limit of 1 TEAMS"))
+                    {
+                        // ignore, we're still being notified
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Bail on subscriptions without killing the whole demo
+            }
+        }
 
         [Route("Home/MarkAsAnswered")]
         public ActionResult MarkAsAnswered(
@@ -290,31 +349,45 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             // Redundant auth check
             if (!IsValidUser(qAndA.tenantId, qAndA.teamId))
                 throw new Exception("Unauthorized user!");
-
-            var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
-                .Messages.Request().Top(30).GetAsync();
-            //var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
-            //    .Messages[qAndA.messageId].Replies.Request().Top(50).GetAsync();
-
-            // merge w/ existing questions 
-            var questions =
-                from m in msgs
-                where IsQuestion(m)
-                select new Question()
-                {
-                    MessageId = m.Id,
-                    Text = StripHTML(m.Body.Content),
-                    Votes = m.Reactions.Count()
-                };
-            qAndA.Questions = questions.OrderByDescending(m => m.Votes).ToList();
-
-            foreach (var q in questions)
+            var handle = graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
+                .Messages.Request().Top(30);
+            try
             {
-                if (!qAndA.IsQuestionAnswered.ContainsKey(q.MessageId))
-                    qAndA.IsQuestionAnswered[q.MessageId] = false;
-            }
+                var msgs = await handle.GetAsync();
+                //var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
+                //    .Messages.Request().Top(30).GetAsync();
+                ////var msgs = await graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
+                //    .Messages[qAndA.messageId].Replies.Request().Top(50).GetAsync();
 
-            //await UpdateCard(qAndA);
+                // merge w/ existing questions 
+                var questions =
+                    from m in msgs
+                    where IsQuestion(m)
+                    select new Question()
+                    {
+                        MessageId = m.Id,
+                        Text = StripHTML(m.Body.Content),
+                        Votes = m.Reactions.Count()
+                    };
+                qAndA.Questions = questions.OrderByDescending(m => m.Votes).ToList();
+
+                foreach (var q in questions)
+                {
+                    if (!qAndA.IsQuestionAnswered.ContainsKey(q.MessageId))
+                        qAndA.IsQuestionAnswered[q.MessageId] = false;
+                }
+
+                //await UpdateCard(qAndA);
+            } catch (Exception e)
+            {
+                string m = String.Format("{0}\n {1}\n {2}\n {3}\n --- trace {4}", handle.GetHttpRequestMessage().GetRequestContext().ClientRequestId,
+                    handle.GetHttpRequestMessage().Method,
+                    handle.GetHttpRequestMessage().RequestUri,
+                    handle.GetHttpRequestMessage().Content,
+                    //handle.GetHttpRequestMessage().Headers.Authorization.Parameter,
+                    e.StackTrace);
+                throw new Exception(m);
+            }
         }
 
         public static string StripHTML(string input)
