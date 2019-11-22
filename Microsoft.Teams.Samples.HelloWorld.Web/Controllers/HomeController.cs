@@ -101,10 +101,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             string token = ParseOauthResponse(req_txt);
             Response.Cookies.Add(new System.Web.HttpCookie("GraphToken", token));
 
-
-            //GraphServiceClient graph = GetAuthenticatedClient(token);
-            //var u = await (graph.Me.Request().GetAsync());
-
             return View("AuthDone");
         }
 
@@ -155,6 +151,77 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
         private static Dictionary<string, string> channelToSubscription
             = new Dictionary<string, string>();
 
+        private GraphServiceClient GetGraphClientUnsafe(string token)
+        {
+            var graphClient = new GraphServiceClient(
+                new DelegateAuthenticationProvider(
+                    requestMessage =>
+                    {
+                        // Append the access token to the request.
+                        requestMessage.Headers.Authorization = new AuthenticationHeaderValue("bearer", token);
+
+                        // Get event times in the current time zone.
+                        requestMessage.Headers.Add("Prefer", "outlook.timezone=\"" + TimeZoneInfo.Local.Id + "\"");
+
+                        return Task.CompletedTask;
+                    }));
+            return graphClient;
+        }
+
+        private void FailAuth()
+        {
+            Response.Cookies.Remove("GraphToken");
+            throw new Exception("Unauthorized user!");
+        }
+
+        public async Task<GraphServiceClient> GetGraphClient(string teamId, Nullable<bool> useRSC)
+        {
+            // There's potentially two tokens – the user delegated token, which provide the user's identity, 
+            // and the main token which allows the app to make useful API calls. When not using RSC, it's 
+            // all the same token. But when using RSC, the second token is an RSC/application permissions token.
+            bool usingRSC = (useRSC != false);
+            string userToken = Request.Cookies["GraphToken"] == null ? null : Request.Cookies["GraphToken"].Value;
+
+            if (userToken == null)
+                FailAuth();
+
+            // Figure out the user and tenant from the userToken. The information is all in the token, 
+            // but the easiest way to verify the token is properly signed is to use it to make a Graph call.
+            GraphServiceClient userGraph = GetGraphClientUnsafe(userToken);
+            User me = null;
+            try
+            {
+                me = await userGraph.Me.Request().GetAsync();
+            } catch
+            {
+                // eg InvalidAuthenticationToken
+                FailAuth();
+            }
+            string tenantId = GetTenant(userToken);
+
+            string messagingToken =
+                usingRSC
+                ? await GetAppPermissionToken(tenantId)
+                : userToken;
+
+            GraphServiceClient messagingGraph = GetGraphClientUnsafe(userToken);
+
+            var members = await messagingGraph.Groups[teamId].Members.Request().GetAsync();
+            if (!members.Any(member => member.Id == me.Id))
+                FailAuth();
+            // to do - figure out if this handles paging, for the case where there's more than 500 users in a team
+
+            //bool userIsMember = false;
+            //var checks = graph.Groups[teamId].CheckMemberObjects(new string[] { UserFromToken() }).Request().PostAsync();
+            //foreach (var c in await checks)
+            //{
+            //    if (c == UserFromToken())
+            //        userIsMember = true;
+            //}
+
+            return GetGraphClientUnsafe(messagingToken);
+        }
+
         [Route("first")]
         public async Task<ActionResult> First(
             [FromUri(Name = "tenantId")] string tenantId,
@@ -165,63 +232,38 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             )
         {
             bool usingRSC = (useRSC != false);
-            var userToken = Request.Cookies["GraphToken"] == null ? null : Request.Cookies["GraphToken"].Value;
-
-            string messagingToken;
-            if (usingRSC)
-                messagingToken = await GetToken(tenantId);
-            else
-            {
-                var cookie = Request.Cookies["GraphToken"];
-                messagingToken = cookie == null ? null : cookie.Value;
-                //token = Request.Cookies["GraphToken"].Value;
-            }
-            //token = null;
-
-            QandAModelWrapper wrapper = new QandAModelWrapper() { useRSC = usingRSC, showLogin = true };
-
-            //if (!IsValidUser(model))
-            //    throw new Exception("Unauthorized user!");
-
             try
             {
-                wrapper.model = GetModel(tenantId, teamId, channelId, "");
+                // Do our auth check first
+                GraphServiceClient graph = await GetGraphClient(teamId, useRSC);
+
                 QandAModel model = GetModel(tenantId, teamId, channelId, "");
-                wrapper.showLogin = (model == null);
-                //bool showLogin = (model == null); //(userToken == null);
+                QandAModelWrapper wrapper = new QandAModelWrapper() {
+                    useRSC = usingRSC,
+                    showLogin = false,
+                    model = model
+                };
 
-                GraphServiceClient graph = GetAuthenticatedClient(messagingToken);
-                var checks = await graph.Groups[teamId].Members.Request().GetAsync();
-                //bool userIsMember = false;
-                //var checks = graph.Groups[teamId].CheckMemberObjects(new string[] { UserFromToken() }).Request().PostAsync();
-                //foreach (var c in await checks)
-                //{
-                //    if (c == UserFromToken())
-                //        userIsMember = true;
-                //}
-
-                //if (!userIsMember)
-                //{
-                //    wrapper.model = null;
-                //    wrapper.showLogin = true;
-                //}
-
-                if (skipRefresh != true && !wrapper.showLogin)
+                if (skipRefresh != true)
                 {
                     await RefreshQandA(model, graph);
-                    if (usingRSC)
+                    if (usingRSC) // not available w/ user delegated permissions
                     {
                         await CreateSubscription(channelId, model, graph);
                     }
                 }
                 ViewBag.MyModel = model;
                 return View("First", wrapper);
-                //return View("First", model);
-            } catch (Exception e) when (e.Message.Contains("Unauthorized") || e.Message.Contains("Access token has expired."))
+            }
+            catch (Exception e) when (e.Message.Contains("Unauthorized") || e.Message.Contains("Access token has expired."))
             {
-                // token expired
-                Response.Cookies.Remove("GraphToken");
-                wrapper.showLogin = true;
+                // missing, bad, or expired token
+                QandAModelWrapper wrapper = new QandAModelWrapper()
+                {
+                    useRSC = usingRSC,
+                    showLogin = true,
+                    model = null
+                };
                 return View("First", wrapper);
             }
         }
@@ -317,6 +359,24 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 
             return oid;
         }
+
+        private string GetTenant(string token)
+        {
+            var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(token);
+
+            string oid = null;
+            string tid = null;
+            foreach (var claim in jwt.Claims)
+            {
+                if (claim.Type == "oid")
+                    oid = claim.Value;
+                if (claim.Type == "tid")
+                    tid = claim.Value;
+            }
+
+            return tid;
+        }
+
 
         private bool IsValidUser(string tenantId, string teamId)
         {
@@ -437,7 +497,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             return model;
         }
 
-        private static async Task<string> GetToken(string tenant)
+        private static async Task<string> GetAppPermissionToken(string tenant)
         {
             string appId = "cb38cf54-ac89-4a7a-9ea3-095d3d080037";// ConfigurationManager.AppSettings["ida:GraphAppId"];
             string redirectUri = ConfigurationManager.AppSettings["ida:RedirectUri"];
@@ -452,22 +512,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             return token;
         }
 
-        public static GraphServiceClient GetAuthenticatedClient(string token)
-        {
-            var graphClient = new GraphServiceClient(
-                new DelegateAuthenticationProvider(
-                    requestMessage =>
-                    {
-                        // Append the access token to the request.
-                        requestMessage.Headers.Authorization = new AuthenticationHeaderValue("bearer", token);
-
-                        // Get event times in the current time zone.
-                        requestMessage.Headers.Add("Prefer", "outlook.timezone=\"" + TimeZoneInfo.Local.Id + "\"");
-
-                        return Task.CompletedTask;
-                    }));
-            return graphClient;
-        }
 
         [Route("second")]
         public ActionResult Second()
