@@ -224,7 +224,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 ? await GetAppPermissionToken(tenantId)
                 : userToken;
 
-            GraphServiceClient messagingGraph = GetGraphClientUnsafe(userToken);
+            GraphServiceClient messagingGraph = GetGraphClientUnsafe(messagingToken);
 
             var members = await messagingGraph.Groups[teamId].Members.Request().GetAsync();
             if (!members.Any(member => member.Id == me.Id))
