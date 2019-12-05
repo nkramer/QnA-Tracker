@@ -144,34 +144,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             return null;
         }
 
-
-        //private bool IsValidUser(string tenantId, string teamId)
-        //{
-        //    var cookie = Request.Cookies["GraphToken"];
-        //    if (cookie == null)
-        //        return false;
-
-        //    var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(cookie.Value);
-
-        //    string oid = null;
-        //    string tid = null;
-        //    foreach (var claim in jwt.Claims)
-        //    {
-        //        if (claim.Type == "oid")
-        //            oid = claim.Value;
-        //        if (claim.Type == "tid")
-        //            tid = claim.Value;
-        //    }
-
-        //    if (tid == null || tid != tenantId)
-        //        return false;
-
-        //    // TODO: check user
-        //    // TODO: check token validity
-
-        //    return true;
-        //}
-
         private static GraphServiceClient GetGraphClientUnsafe(string token)
         {
             var graphClient = new GraphServiceClient(
@@ -191,8 +163,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 
         private static void FailAuth(HttpCookieCollection requestCookies, HttpCookieCollection responseCookies)
         {
-            //requestCookies.Remove("GraphToken"); // dubious
-            //responseCookies.Remove("GraphToken");
             if (responseCookies["GraphToken"] != null)
             {
                 // Remove invalid cookie by expiring it
@@ -203,6 +173,8 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             throw new Exception("Unauthorized user!");
         }
 
+        // As part of creating the Graph Client, this method acquires all the necessary 
+        // tokens, and checks that the user has access to the team.
         public static async Task<GraphServiceClient> GetGraphClient(string teamId, HttpCookieCollection requestCookies, HttpCookieCollection responseCookies, Nullable<bool> useRSC)
         {
             // There's potentially two tokens – the user delegated token, which provide the user's identity, 
@@ -248,7 +220,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 FailAuth(requestCookies, responseCookies);
             // to do - figure out if this handles paging, for the case where there's more than 500 users in a team
 
-            // Alternate approach
+            // Alternate approach:
             //bool userIsMember = false;
             //var checks = graph.Groups[teamId].CheckMemberObjects(new string[] { UserFromToken() }).Request().PostAsync();
             //foreach (var c in await checks)
@@ -479,7 +451,7 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
             //model.IsQuestionAnswered[replyId] = true;
             model.IsQuestionAnswered[messageId] = true;
             
-            // to-do -- consider escaping these parameters, even though they aren't trusted on the other hand
+            // to-do -- consider escaping these parameters, even though they aren't trusted on the other end
             string url = $"~/First?tenantId={tenantId}&teamId={teamId}&channelId={channelId}&messageId={messageId}&skipRefresh=true&useRSC=false";
             return Redirect(url);
         }
@@ -502,9 +474,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
 
         public async Task RefreshQandA(QandAModel qAndA, GraphServiceClient graph)
         {
-            // Redundant auth check
-            //if (!Authorization.IsValidUser(qAndA.tenantId, qAndA.teamId))
-            //    throw new Exception("Unauthorized user!");
             var handle = graph.Teams[qAndA.teamId].Channels[qAndA.channelId]
                 .Messages.Request().Top(30);
             try
@@ -536,7 +505,6 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
                 //await UpdateCard(qAndA);
             } catch (Exception e)
             {
-                //string clientRequestId = (System.Net.Http.HttpRequestMessageExtensions.GetRequestContext(handle.GetHttpRequestMessage()).ClientRequestId;
                 string m = String.Format("{0}\n {1}\n {2}\n {3}\n --- trace {4}", 
                     handle.GetHttpRequestMessage().GetRequestContext().ClientRequestId,
                     handle.GetHttpRequestMessage().Method,
@@ -574,10 +542,8 @@ namespace Microsoft.Teams.Samples.HelloWorld.Web.Controllers
         private QandAModel GetModel(string tenantId, string teamId, string channelId, string messageId)
         {
             // TODO: Validate the user has access to the team (or at least the tenant) before retrieving the model. 
-            // Currently we allow unauthenticated users to mark questions as answered, but we won't tell them the actual question.
-
-            //if (!IsValidUser(tenantId, teamId))
-            //    throw new Exception("Unauthorized user!");
+            // It's not critical right now since we'll fail out when we make the inevitable Graph calls to
+            // update the model, but it's a little fragile.
 
             string key = QandAModel.Encode(tenantId, teamId, channelId, messageId);
             QandAModel model;
