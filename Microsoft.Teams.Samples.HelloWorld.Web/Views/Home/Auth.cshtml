@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿@model Microsoft.Teams.Samples.HelloWorld.Web.Controllers.AuthModel
+<!DOCTYPE html>
 
 <html>
 <head>
@@ -91,15 +92,14 @@
         localStorage.removeItem("simple.error");
         // Go to the Azure AD authorization endpoint
         let queryParams = {
-            client_id: "8d67d2e3-868a-49df-8bdd-da22b7f6bee9",
-            //response_type: "id_token",
+            client_id: "@Model.GraphAppId",
             response_type: "id_token token",
             response_mode: "form_post",
             resource: "https://graph.microsoft.com",
             redirect_uri: window.location.origin + "/authdone",
             nonce: "23",
             state: state,
-            scope: "User.Read",
+            scope: ".default", // User.Read
             // The context object is populated by Teams; the loginHint attribute
             // is used as hinting information
             login_hint: context.loginHint,

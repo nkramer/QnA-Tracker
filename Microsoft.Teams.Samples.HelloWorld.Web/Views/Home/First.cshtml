@@ -114,7 +114,7 @@
     var model = Model.model; //(BotAuthenticationMSGraph.QandAModel)ViewBag.MyModel;
     if (Model.showLogin)
     {
-        <button onclick="showLogin()">Authenticate me</button>
+        <button onclick='@("showLogin("+ Json.Encode(Model.useRSC) + ")")'>Authenticate me</button>
     }
     else if (model != null)
     {
